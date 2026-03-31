@@ -20,15 +20,19 @@
 #define TAG "ble_task"
 
 #define CID_ESP 0x02E5//company identifier for Espressif Systems(by bluetooth SIG)
-#define DEV_UUID_LEN         16
-#define MOTION_QUEUE_WAIT_MS 1000
+#define MOTION_QUEUE_WAIT_MS 1000//
 
 EventGroupHandle_t s_ble_mesh_event_group = NULL;
 
 static ble_args_t *g_ble_args = NULL;
-static uint8_t dev_uuid[16] = {0};//will later be set to device MAC address.
+static uint8_t dev_uuid[16] = {0};
 
 static uint8_t g_motion_state = 0;
+static esp_ble_mesh_client_t onoff_cli;
+
+static uint16_t g_app_idx = ESP_BLE_MESH_KEY_UNUSED;
+static uint16_t g_dst_addr = ESP_BLE_MESH_ADDR_UNASSIGNED;
+static uint8_t  g_tid = 0;//
 
 
 
@@ -56,6 +60,8 @@ static esp_ble_mesh_cfg_srv_t cfg_srv = {
 //the first var is the name of the msg, second is length, last is the role of the device which is a node.
 ESP_BLE_MESH_MODEL_PUB_DEFINE(onoff_pub, 4, ROLE_NODE);
 
+ESP_BLE_MESH_MODEL_PUB_DEFINE(onoff_cli_pub, 2 + 2, ROLE_NODE);
+
 //this code automatically initializes the onoff_srv struct.
 static esp_ble_mesh_gen_onoff_srv_t onoff_srv = {
     .rsp_ctrl = {
@@ -68,6 +74,7 @@ static esp_ble_mesh_gen_onoff_srv_t onoff_srv = {
 static esp_ble_mesh_model_t root_models[] = {
     ESP_BLE_MESH_MODEL_CFG_SRV(&cfg_srv),
     ESP_BLE_MESH_MODEL_GEN_ONOFF_SRV(&onoff_pub, &onoff_srv),
+    ESP_BLE_MESH_MODEL_GEN_ONOFF_CLI(&onoff_cli_pub, &onoff_cli),
 };
 
 //we only have one element which is the root element.
@@ -89,27 +96,40 @@ static esp_ble_mesh_prov_t provision = {//needs to be random
 
 
 
-static esp_err_t ble_publish_motion_state(uint8_t motion)
+static esp_err_t ble_send_motion_state(uint8_t motion)
 {
-    uint8_t status = motion ? 1 : 0;
+    if (g_app_idx == ESP_BLE_MESH_KEY_UNUSED) {//check if app key is bound to the model.
+        ESP_LOGW(TAG, "Cannot send: app_idx not set yet");
+        return ESP_FAIL;
+    }
 
-    /* Houd de modelstatus gelijk aan wat gepubliceerd wordt */
-    onoff_srv.state.onoff = status;
+    if (g_dst_addr == ESP_BLE_MESH_ADDR_UNASSIGNED) {//check if subscription address is set for the model.
+        ESP_LOGW(TAG, "Cannot send: destination address not set yet");
+        return ESP_FAIL;
+    }
 
-    esp_err_t err = esp_ble_mesh_model_publish(
-        &root_models[1],
-        ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS,
-        sizeof(status),
-        &status,
-        ROLE_NODE
-    );
+    esp_ble_mesh_client_common_param_t common = {0};//message struct, acts as a container for the message we want to send.
+    esp_ble_mesh_generic_client_set_state_t set = {0};
 
+    common.opcode = ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_SET_UNACK;//what kind of message we want to send.
+    common.model = &root_models[2];//which model sends it
+    common.ctx.net_idx = 0;//which network to send on, we only have one network so it's 0.
+    common.ctx.app_idx = g_app_idx;//which app key to use(security required), we only have one app key so it's the one we stored when we got the model app bind event.
+    common.ctx.addr = g_dst_addr;//which address to send to.(subscription address) 
+    common.ctx.send_ttl = 3;//how many jumps the messages makes.
+    common.msg_timeout = 0;//no response needed.
+
+    set.onoff_set.op_en = false;//
+    set.onoff_set.onoff = motion;//the state we want to send.
+    set.onoff_set.tid = g_tid++;//transaction ID, needs to  be different for each message.
+
+    esp_err_t err = esp_ble_mesh_generic_client_set_state(&common, &set);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Publish failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, "SET_UNACK send failed: %s", esp_err_to_name(err));
         return err;
     }
 
-    ESP_LOGI(TAG, "Published motion state: %u", status);
+    ESP_LOGI(TAG, "Sent motion state %u to 0x%04x", motion ? 1 : 0, g_dst_addr);
     return ESP_OK;
 }
 
@@ -168,20 +188,32 @@ static void cfg_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
 
     case ESP_BLE_MESH_MODEL_OP_MODEL_APP_BIND:
         ESP_LOGI(TAG,
-                 "Model bound: elem=0x%04x app_idx=0x%04x cid=0x%04x mod_id=0x%04x",
-                 param->value.state_change.mod_app_bind.element_addr,
-                 param->value.state_change.mod_app_bind.app_idx,
-                 param->value.state_change.mod_app_bind.company_id,
-                 param->value.state_change.mod_app_bind.model_id);
+                "Model bound: elem=0x%04x app_idx=0x%04x cid=0x%04x mod_id=0x%04x",
+                param->value.state_change.mod_app_bind.element_addr,
+                param->value.state_change.mod_app_bind.app_idx,
+                param->value.state_change.mod_app_bind.company_id,
+                param->value.state_change.mod_app_bind.model_id);
+
+        if (param->value.state_change.mod_app_bind.model_id == ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_CLI &&
+            param->value.state_change.mod_app_bind.company_id == ESP_BLE_MESH_CID_NVAL) {
+            g_app_idx = param->value.state_change.mod_app_bind.app_idx;
+            ESP_LOGI(TAG, "Stored client app_idx = 0x%04x", g_app_idx);
+        }
         break;
 
     case ESP_BLE_MESH_MODEL_OP_MODEL_SUB_ADD:
         ESP_LOGI(TAG,
-                 "Subscription added: elem=0x%04x sub=0x%04x cid=0x%04x mod_id=0x%04x",
-                 param->value.state_change.mod_sub_add.element_addr,
-                 param->value.state_change.mod_sub_add.sub_addr,
-                 param->value.state_change.mod_sub_add.company_id,
-                 param->value.state_change.mod_sub_add.model_id);
+                "Subscription added: elem=0x%04x sub=0x%04x cid=0x%04x mod_id=0x%04x",
+                param->value.state_change.mod_sub_add.element_addr,
+                param->value.state_change.mod_sub_add.sub_addr,
+                param->value.state_change.mod_sub_add.company_id,
+                param->value.state_change.mod_sub_add.model_id);
+
+        if (param->value.state_change.mod_sub_add.model_id == ESP_BLE_MESH_MODEL_ID_GEN_ONOFF_SRV &&
+            param->value.state_change.mod_sub_add.company_id == ESP_BLE_MESH_CID_NVAL) {
+            g_dst_addr = param->value.state_change.mod_sub_add.sub_addr;
+            ESP_LOGI(TAG, "Stored destination addr = 0x%04x", g_dst_addr);
+        }
         break;
 
     default:
@@ -217,6 +249,8 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
         break;
     }
 }
+
+
 
 
 
@@ -284,18 +318,17 @@ void ble_task(void *arg)
         uint8_t motion = 0;
 
         
-            if (xQueueReceive(g_ble_args->ble_tx_queue,&motion,pdMS_TO_TICKS(MOTION_QUEUE_WAIT_MS)) == pdTRUE) {
-                motion = motion ? 1 : 0;//is motion detected or not.
+        if (xQueueReceive(g_ble_args->ble_tx_queue,&motion,0) == pdTRUE) {
+            motion = motion ? 1 : 0;//is motion detected or not.
 
-            if (motion != g_motion_state) {
-                g_motion_state = motion;
-                ESP_LOGI(TAG, "Motion queue update: %u", g_motion_state);
+            if (motion) {
+                ESP_LOGI(TAG, "Motion queue update: %u", motion);
 
                 if (xEventGroupGetBits(s_ble_mesh_event_group) & MESH_CONNECTED_BIT) {
-                    ble_publish_motion_state(g_motion_state);
+                    ble_send_motion_state(motion);
                 }
-            }
         }
+    }vTaskDelay(pdMS_TO_TICKS(MOTION_QUEUE_WAIT_MS));
     
     }
 }

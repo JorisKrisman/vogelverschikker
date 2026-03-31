@@ -13,6 +13,7 @@ static ble_args_t ble_args;
 /* Voorbeeld actietaak */
 void action_task(void *pvParameters)
 {
+    
     while (true) {
         /* Wacht op trigger vanuit BLE of lokale detectie */
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
