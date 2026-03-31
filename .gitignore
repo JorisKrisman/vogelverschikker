@@ -1,0 +1,5 @@
+.pio/*
+.vscode/*
+build/*
+lib/*
+sdkconfig.esp32-s3-devkitc-1.old
