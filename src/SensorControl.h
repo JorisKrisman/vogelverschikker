@@ -10,9 +10,10 @@
 
 class SensorController {
 public:
-    SensorController(gpio_num_t motionPin,adc1_channel_t ldrChannel,QueueHandle_t motionQueue,QueueHandle_t lightQueue);
+    SensorController(gpio_num_t motionPin,adc1_channel_t ldrChannel,QueueHandle_t motionQueue,QueueHandle_t lightQueue,TaskHandle_t actionTaskHandle);
 
     void init();
+    
 
 private:
     gpio_num_t motionPin;
@@ -20,6 +21,7 @@ private:
 
     QueueHandle_t motionQueue;
     QueueHandle_t lightQueue;
+    TaskHandle_t actionTaskHandle;
 
     // Task functions
     static void motionTask(void* arg);
