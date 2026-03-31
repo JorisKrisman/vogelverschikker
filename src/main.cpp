@@ -1,6 +1,11 @@
 #include "ble_task.h"
 #include "SensorControl.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+
+#define LED_GPIO GPIO_NUM_42
 
 static const char *TAG = "main";
 
@@ -13,9 +18,18 @@ static ble_args_t ble_args;
 /* Voorbeeld actietaak */
 void action_task(void *pvParameters)
 {
+    gpio_reset_pin(LED_GPIO);
+    gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
+    
     while (true) {
         /* Wacht op trigger vanuit BLE of lokale detectie */
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        gpio_set_level(LED_GPIO, 1); // LED ON
+        vTaskDelay(pdMS_TO_TICKS(500));
+
+        gpio_set_level(LED_GPIO, 0); // LED OFF
+        vTaskDelay(pdMS_TO_TICKS(500));
 
         ESP_LOGI("action_task", "Afschrikactie gestart");
 

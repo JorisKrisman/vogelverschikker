@@ -42,12 +42,12 @@ void SensorController::motionTask(void* arg)
 
     while (true) {
         uint8_t motion = gpio_get_level(self->motionPin);
-        ESP_LOGI(TAG, "Motion: %d", motion);
+        // ESP_LOGI(TAG, "Motion: %d", motion);
         xQueueOverwrite(self->motionQueue, &motion);
-        if(motion)
-        {
-            xTaskNotifyGive(self->actionTaskHandle);//Trigger action task on motion detection
-        }
+        // if(motion)
+        // {
+        //     xTaskNotifyGive(self->actionTaskHandle);//Trigger action task on motion detection
+        // }
 
 
         vTaskDelay(pdMS_TO_TICKS(500)); 
@@ -60,7 +60,7 @@ void SensorController::ldrTask(void* arg)
 
     while (true) {
         uint16_t light = adc1_get_raw(self->ldrChannel);
-        ESP_LOGI(TAG, "Light: %d", light);
+        // ESP_LOGI(TAG, "Light: %d", light);
         xQueueOverwrite(self->lightQueue, &light);
 
 
