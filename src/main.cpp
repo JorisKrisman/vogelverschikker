@@ -47,6 +47,7 @@ void action_task(void *pvParameters)
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         ESP_LOGI("action_task", "Afschrikactie gestopt");
+        //Clear notify list
         while (ulTaskNotifyTake(pdTRUE, 0) > 0) {}
     }
 }
