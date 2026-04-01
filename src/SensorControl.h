@@ -22,8 +22,11 @@ private:
     QueueHandle_t motionQueue;
     QueueHandle_t lightQueue;
     TaskHandle_t actionTaskHandle;
+    bool systemActive;
 
     // Task functions
     static void motionTask(void* arg);
     static void ldrTask(void* arg);
+    void checkTreshold(uint16_t lightValue);
+    void enterSleepMode();
 };

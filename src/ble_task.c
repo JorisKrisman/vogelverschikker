@@ -133,6 +133,7 @@ static esp_err_t ble_send_motion_state(uint8_t motion)
     return ESP_OK;
 }
 
+//callback for provisioning events.
 
 static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_param_t *param)
 {
@@ -173,6 +174,7 @@ static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_para
         break;
     }
 }
+//callback for configuration server events.
 
 static void cfg_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
                           esp_ble_mesh_cfg_server_cb_param_t *param)
@@ -221,6 +223,7 @@ static void cfg_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
     }
 }
 
+//callbacks for generic server.
 static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
                               esp_ble_mesh_generic_server_cb_param_t *param)
 {
@@ -250,6 +253,7 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
     }
 }
 
+//init ble
 
 
 
@@ -300,6 +304,7 @@ static void ble_mesh_start(void)
     );
 }
 
+//ble task.
 
 void ble_task(void *arg)
 {

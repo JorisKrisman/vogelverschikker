@@ -1,5 +1,9 @@
 #include "SensorControl.h"
 #include "esp_log.h"
+#include "esp_sleep.h"
+
+#define THRESHOLD 1000
+#define WAKEUP_TIME_SECONDS 1 //wake up after 
 
 
 
@@ -12,6 +16,7 @@ SensorController::SensorController(gpio_num_t motionPin,adc1_channel_t ldrChanne
     this->motionQueue = motionQueue;
     this->lightQueue = lightQueue;
     this->actionTaskHandle = actionTaskHandle;
+    this->systemActive = true;//system starts active by default.
 }
 
 void SensorController::init()
@@ -35,6 +40,41 @@ void SensorController::init()
     xTaskCreate(motionTask, "motionTask", 4096, this, 5, NULL);
     xTaskCreate(ldrTask, "ldrTask", 4096, this, 5, NULL);
 }
+
+
+void SensorController::enterSleepMode()
+{
+    esp_sleep_enable_timer_wakeup(WAKEUP_TIME_SECONDS*1000000);
+    ESP_LOGI(TAG, "Entering sleep mode for 10 minutes");
+    esp_deep_sleep_start();
+}
+
+void SensorController::checkTreshold(uint16_t lightValue)
+{
+    if (lightValue < THRESHOLD) //go to sleep when it's dark
+    {
+        ESP_LOGI(TAG, "Light below threshold, entering light sleep for 1 minute");
+        this->systemActive = false;
+
+
+        esp_sleep_enable_timer_wakeup(10000000);//wake up after 10 seconds, can be adjusted as needed.
+
+        //enter sleepmode
+        esp_light_sleep_start();
+
+        ESP_LOGI(TAG, "Woke up from light sleep");
+        this->systemActive = true;
+        return;
+    }
+
+    if (lightValue > THRESHOLD) //if its bright, turn on
+    {
+        ESP_LOGI(TAG, "Light above threshold, waking up");
+        this->systemActive = true;
+    }
+}
+
+
 
 void SensorController::motionTask(void* arg)
 {
@@ -61,6 +101,7 @@ void SensorController::ldrTask(void* arg)
     while (true) {
         uint16_t light = adc1_get_raw(self->ldrChannel);
         ESP_LOGI(TAG, "Light: %d", light);
+        self->checkTreshold(light);
         xQueueOverwrite(self->lightQueue, &light);
 
 
