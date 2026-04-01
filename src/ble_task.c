@@ -134,6 +134,7 @@ static esp_err_t ble_send_motion_state(uint8_t motion)
 }
 
 //callback for provisioning events.
+
 static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_param_t *param)
 {
     switch (event) {
@@ -174,6 +175,7 @@ static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_para
     }
 }
 //callback for configuration server events.
+
 static void cfg_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
                           esp_ble_mesh_cfg_server_cb_param_t *param)
 {
@@ -252,6 +254,10 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
 }
 
 //init ble
+
+
+
+
 void ble_init(void)
 {
     esp_err_t err = nvs_flash_init();
@@ -299,6 +305,7 @@ static void ble_mesh_start(void)
 }
 
 //ble task.
+
 void ble_task(void *arg)
 {
     g_ble_args = (ble_args_t *)arg;

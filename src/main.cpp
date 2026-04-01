@@ -1,7 +1,14 @@
 #include "ble_task.h"
 #include "SensorControl.h"
+#include "audio_control.h"
 #include "esp_log.h"
-#include "esp_sleep.h"
+#include "driver/gpio.h"
+
+#define LED_GPIO GPIO_NUM_40
+#define MOTOR_GPIO GPIO_NUM_39
+
+// //Test gpio for action_task
+// #define BUTTON_GPIO GPIO_NUM_0
 
 static const char *TAG = "main";
 
@@ -11,29 +18,57 @@ static TaskHandle_t actionTaskHandle = NULL;
 /* Args moeten blijven bestaan nadat app_main klaar is */
 static ble_args_t ble_args;
 
-/* Voorbeeld actietaak */
+/* actietaak */
 void action_task(void *pvParameters)
 {
+    gpio_reset_pin(LED_GPIO); // LED OFF
+    gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
+
+    gpio_reset_pin(MOTOR_GPIO); // MOTOR OFF
+    gpio_set_direction(MOTOR_GPIO, GPIO_MODE_OUTPUT);
 
     while (true) {
         /* Wacht op trigger vanuit BLE of lokale detectie */
+        ESP_LOGI("action_task", "Afschrikactie gestart");
+        gpio_set_level(LED_GPIO, 1); // LED ON
+        vTaskDelay(pdMS_TO_TICKS(1000));
+
+        gpio_set_level(LED_GPIO, 0); // LED OFF
+        vTaskDelay(pdMS_TO_TICKS(250));
+
+        audio_start(); // Start geluid
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        audio_stop(); // Stop geluid
+
+        gpio_set_level(MOTOR_GPIO, 1); // MOTOR ON
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        gpio_set_level(MOTOR_GPIO, 0); // MOTOR OFF
+
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        ESP_LOGI("action_task", "Afschrikactie gestart");
-
-        /* Hier start je motor + geluid */
-        vTaskDelay(pdMS_TO_TICKS(10000));
-
         ESP_LOGI("action_task", "Afschrikactie gestopt");
+        //Clear notify list
         while (ulTaskNotifyTake(pdTRUE, 0) > 0) {}
     }
 }
 
+// //ISR voor de testen, deze zal de actietaak triggeren
+// static void IRAM_ATTR button_isr_handler(void* arg)
+// {
+//     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+//     if (actionTaskHandle != NULL) {
+//         vTaskNotifyGiveFromISR(actionTaskHandle, &xHigherPriorityTaskWoken);
+//     }
+
+//     if (xHigherPriorityTaskWoken) {
+//         portYIELD_FROM_ISR();
+//     }
+// }
+
+
 extern "C" void app_main(void)
 {
-    esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-    ESP_LOGI("main", "Wakeup cause: %d", cause);
-    
     QueueHandle_t motionQueue = xQueueCreate(1, sizeof(uint8_t));
     QueueHandle_t lightQueue  = xQueueCreate(1, sizeof(uint16_t));
     EventGroupHandle_t meshEventGroup = xEventGroupCreate();
@@ -41,6 +76,23 @@ extern "C" void app_main(void)
 
     ESP_LOGI(TAG, "Start slimme vogelverschrikker");
 
+    ESP_ERROR_CHECK(audio_init());
+
+    // // Test GPIO configureren voor de actietaak trigger 
+    // gpio_config_t io_conf = {};
+    // io_conf.intr_type = GPIO_INTR_NEGEDGE; 
+    // io_conf.mode = GPIO_MODE_INPUT;
+    // io_conf.pin_bit_mask = (1ULL << BUTTON_GPIO);
+    // io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    // io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+
+    // gpio_config(&io_conf);
+
+    // gpio_install_isr_service(0);
+
+    // // Koppel interrupt handler
+    // gpio_isr_handler_add(BUTTON_GPIO, button_isr_handler, NULL);
+    // // Einde test GPIO setup
 
     /* Eerst actietaak maken, zodat we de handle kunnen doorgeven */
     xTaskCreate(action_task,"action_task",4096,NULL,5,&actionTaskHandle);

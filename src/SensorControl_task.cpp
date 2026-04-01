@@ -5,6 +5,8 @@
 #define THRESHOLD 1000
 #define WAKEUP_TIME_SECONDS 1 //wake up after 
 
+
+
 static const char* TAG = "SensorController";
 
 SensorController::SensorController(gpio_num_t motionPin,adc1_channel_t ldrChannel,QueueHandle_t motionQueue,QueueHandle_t lightQueue, TaskHandle_t actionTaskHandle)
