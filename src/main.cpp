@@ -1,12 +1,13 @@
 #include "ble_task.h"
 #include "SensorControl.h"
+#include "audio_control.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
 
-#define LED_GPIO GPIO_NUM_1
-#define MOTOR_GPIO GPIO_NUM_2
+#define LED_GPIO GPIO_NUM_40
+#define MOTOR_GPIO GPIO_NUM_39
 
-//Test gpio for action_task
+// //Test gpio for action_task
 // #define BUTTON_GPIO GPIO_NUM_0
 
 static const char *TAG = "main";
@@ -17,7 +18,7 @@ static TaskHandle_t actionTaskHandle = NULL;
 /* Args moeten blijven bestaan nadat app_main klaar is */
 static ble_args_t ble_args;
 
-/* Voorbeeld actietaak */
+/* actietaak */
 void action_task(void *pvParameters)
 {
     gpio_reset_pin(LED_GPIO); // LED OFF
@@ -28,26 +29,29 @@ void action_task(void *pvParameters)
 
     while (true) {
         /* Wacht op trigger vanuit BLE of lokale detectie */
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
         ESP_LOGI("action_task", "Afschrikactie gestart");
         gpio_set_level(LED_GPIO, 1); // LED ON
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(1000));
 
         gpio_set_level(LED_GPIO, 0); // LED OFF
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(250));
+
+        audio_start(); // Start geluid
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        audio_stop(); // Stop geluid
 
         gpio_set_level(MOTOR_GPIO, 1); // MOTOR ON
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        gpio_set_level(MOTOR_GPIO, 0); // MOTOR OFF
 
-        /* Hier start je motor + geluid */
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         ESP_LOGI("action_task", "Afschrikactie gestopt");
         while (ulTaskNotifyTake(pdTRUE, 0) > 0) {}
     }
 }
 
-// ISR voor de testen, deze zal de actietaak triggeren
+// //ISR voor de testen, deze zal de actietaak triggeren
 // static void IRAM_ATTR button_isr_handler(void* arg)
 // {
 //     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -70,6 +74,8 @@ extern "C" void app_main(void)
 
 
     ESP_LOGI(TAG, "Start slimme vogelverschrikker");
+
+    ESP_ERROR_CHECK(audio_init());
 
     // // Test GPIO configureren voor de actietaak trigger 
     // gpio_config_t io_conf = {};
