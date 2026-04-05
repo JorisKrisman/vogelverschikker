@@ -21,16 +21,16 @@ SensorController::SensorController(gpio_num_t motionPin,adc1_channel_t ldrChanne
 
 void SensorController::init()
 {
-    //Motion sensor
+    //Motion sensor config with pull down to keep it low when no motion is detected.
     gpio_config_t io_conf = {};
-    io_conf.pin_bit_mask = (1ULL << motionPin);
+    io_conf.pin_bit_mask = (1 << motionPin);
     io_conf.mode = GPIO_MODE_INPUT;//input only
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
     io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;//keep the pin low when no motion is detected
     io_conf.intr_type = GPIO_INTR_DISABLE;
     gpio_config(&io_conf);
 
-    //LDR
+    //LDR config
     adc1_config_width(ADC_WIDTH_BIT_12);
     adc1_config_channel_atten(ldrChannel, ADC_ATTEN_DB_12);
 
@@ -49,6 +49,7 @@ void SensorController::enterSleepMode()
     esp_deep_sleep_start();
 }
 
+//check the light value and decide if we should go to sleep or wake up. This is called in the LDR task.
 void SensorController::checkTreshold(uint16_t lightValue)
 {
     if (lightValue < THRESHOLD) //go to sleep when it's dark
@@ -75,7 +76,8 @@ void SensorController::checkTreshold(uint16_t lightValue)
 }
 
 
-
+//task for motion sensor, it reads the motion sensor and sends the value to the queue
+//it also triggers the action task when motion is detected for local reactivity.
 void SensorController::motionTask(void* arg)
 {
     SensorController* self = static_cast<SensorController*>(arg);
@@ -90,10 +92,12 @@ void SensorController::motionTask(void* arg)
         }
 
 
-        vTaskDelay(pdMS_TO_TICKS(500)); 
+        vTaskDelay(pdMS_TO_TICKS(500)); //prevent blocking and reduce sampeling rate.
     }
 }
 
+//task for the LDR, it reads the LDR value
+//checks if it is below the threshold and sends the value to the queue.
 void SensorController::ldrTask(void* arg)
 {
     SensorController* self = static_cast<SensorController*>(arg);
@@ -105,6 +109,6 @@ void SensorController::ldrTask(void* arg)
         xQueueOverwrite(self->lightQueue, &light);
 
 
-        vTaskDelay(pdMS_TO_TICKS(1000)); 
+        vTaskDelay(pdMS_TO_TICKS(1000));//prevent blocking and reduce sampeling rate.
     }
 }

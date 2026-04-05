@@ -25,36 +25,36 @@
 EventGroupHandle_t s_ble_mesh_event_group = NULL;
 
 static ble_args_t *g_ble_args = NULL;
-static uint8_t dev_uuid[16] = {0};
+static uint8_t dev_uuid[16] = {0};//
 
-static uint8_t g_motion_state = 0;
-static esp_ble_mesh_client_t onoff_cli;
+static uint8_t g_motion_state = 0;//variable to save the motion state, 0 for no motion, 1 for motion detected.
+static esp_ble_mesh_client_t onoff_cli;//a struct for the client model
 
-static uint16_t g_app_idx = ESP_BLE_MESH_KEY_UNUSED;
-static uint16_t g_dst_addr = ESP_BLE_MESH_ADDR_UNASSIGNED;
-static uint8_t  g_tid = 0;//
+static uint16_t g_app_idx = ESP_BLE_MESH_KEY_UNUSED;//to save the app key after we bind it to the model.
+static uint16_t g_dst_addr = ESP_BLE_MESH_ADDR_UNASSIGNED;//to save the subscription address after we get it.
+static uint8_t  g_tid = 0;//to keep every message unique after we send it.
 
 
 
 
 //config relay, GATT for provisioning by phone, beacon to find the node.
 static esp_ble_mesh_cfg_srv_t cfg_srv = {
-    /* 3 transmissions with 20ms interval */
+    //20ms and 2 retransmissions for transmits
     .net_transmit = ESP_BLE_MESH_TRANSMIT(2, 20),
-    .relay = ESP_BLE_MESH_RELAY_ENABLED,
-    .relay_retransmit = ESP_BLE_MESH_TRANSMIT(2, 20),
-    .beacon = ESP_BLE_MESH_BEACON_ENABLED,
-#if defined(CONFIG_BLE_MESH_GATT_PROXY_SERVER)
+    .relay = ESP_BLE_MESH_RELAY_ENABLED,//enable relay
+    .relay_retransmit = ESP_BLE_MESH_TRANSMIT(2, 20),//20ms and 2 retransmissions for relay retransmits
+    .beacon = ESP_BLE_MESH_BEACON_ENABLED,//enable beacon to be found by phone.
+#if defined(CONFIG_BLE_MESH_GATT_PROXY_SERVER)//enable GATT proxy to allow provisioning by phone.
     .gatt_proxy = ESP_BLE_MESH_GATT_PROXY_ENABLED,
 #else
     .gatt_proxy = ESP_BLE_MESH_GATT_PROXY_NOT_SUPPORTED,
 #endif
-#if defined(CONFIG_BLE_MESH_FRIEND)
+#if defined(CONFIG_BLE_MESH_FRIEND)//not defined
     .friend_state = ESP_BLE_MESH_FRIEND_ENABLED,
 #else
     .friend_state = ESP_BLE_MESH_FRIEND_NOT_SUPPORTED,
 #endif
-    .default_ttl = 7,
+    .default_ttl = 7,//default TTL, how many jumps the message can make.
 };
 
 //the first var is the name of the msg, second is length, last is the role of the device which is a node.
@@ -133,11 +133,13 @@ static esp_err_t ble_send_motion_state(uint8_t motion)
     return ESP_OK;
 }
 
-//callback for provisioning events.
+//=============callbacks for events=============
 
+//the provisioning callback function.
 static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_param_t *param)
 {
     switch (event) {
+        //this case will be triggered when the BLE mesh is initialized.
     case ESP_BLE_MESH_PROV_REGISTER_COMP_EVT:
         if (param->prov_register_comp.err_code == ESP_OK) {
             ESP_LOGI(TAG, "BLE Mesh initialized");
@@ -146,11 +148,11 @@ static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_para
             xEventGroupSetBits(s_ble_mesh_event_group, MESH_FAIL_BIT);
         }
         break;
-
+        //this case will be triggered when the provisioning is enabled, which means the device is ready to be provisioned.
     case ESP_BLE_MESH_NODE_PROV_ENABLE_COMP_EVT:
         ESP_LOGI(TAG, "Provisioning enabled");
         break;
-
+        //this case will be triggered when the device is successfully provisioned, which means it is now part of the mesh network and can send and receive messages.
     case ESP_BLE_MESH_NODE_PROV_COMPLETE_EVT:
         ESP_LOGI(TAG,
                  "Provisioned: net_idx=0x%04x addr=0x%04x flags=0x%02x iv_index=0x%08" PRIx32,
@@ -161,7 +163,7 @@ static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_para
 
         xEventGroupSetBits(s_ble_mesh_event_group, MESH_CONNECTED_BIT);
         break;
-
+        //this case will trigger when the provisioning is reset. it will allow the device to be reprovisioned.
     case ESP_BLE_MESH_NODE_PROV_RESET_EVT:
         ESP_LOGW(TAG, "Provisioning reset; enabling unprovisioned beacon again");
 
@@ -174,8 +176,8 @@ static void prov_cb(esp_ble_mesh_prov_cb_event_t event,esp_ble_mesh_prov_cb_para
         break;
     }
 }
-//callback for configuration server events.
 
+//callback for the config server. It signals when we get the model app and model sub events.
 static void cfg_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
                           esp_ble_mesh_cfg_server_cb_param_t *param)
 {
@@ -223,7 +225,8 @@ static void cfg_server_cb(esp_ble_mesh_cfg_server_cb_event_t event,
     }
 }
 
-//callbacks for generic server.
+//callbacks for generic server. this is used to handle detection messages from other nodes.
+//this function will handle the logic when we receive a message.
 static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
                               esp_ble_mesh_generic_server_cb_param_t *param)
 {
@@ -233,16 +236,16 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
 
     switch (param->ctx.recv_op) {
     case ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_SET:
-    case ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_SET_UNACK: {
-        uint8_t onoff = param->value.state_change.onoff_set.onoff ? 1 : 0;
+    case ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_SET_UNACK: {//we receive a message to set the onoff state, which means motion is detected from other nodes.
+        uint8_t onoff = param->value.state_change.onoff_set.onoff ? 1 : 0;//get the onoff value from the message.
 
-        onoff_srv.state.onoff = onoff;
-        g_motion_state = onoff;
+        onoff_srv.state.onoff= onoff;
+        g_motion_state = onoff;//update the global var with the motion state.
 
         ESP_LOGI(TAG, "Generic OnOff set from 0x%04x -> %u", param->ctx.addr, onoff);
 
-        /* Alleen bij detectie de actietaak triggeren */
-        if (onoff == 1 && g_ble_args != NULL && g_ble_args->action_task_handle != NULL) {
+        //trigger the action task when motion is detected for local reactivity.
+        if (g_motion_state == 1 && g_ble_args != NULL && g_ble_args->action_task_handle != NULL) {
             xTaskNotifyGive(g_ble_args->action_task_handle);//trigger when motion is detected from the ble network
         }
         break;
@@ -257,7 +260,7 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
 
 
 
-
+//inits for the ble mesh.
 void ble_init(void)
 {
     esp_err_t err = nvs_flash_init();
@@ -284,14 +287,14 @@ void ble_init(void)
     ESP_ERROR_CHECK(esp_bluedroid_init());
     ESP_ERROR_CHECK(esp_bluedroid_enable());
 }
-
+//register the callbacks
 static void ble_mesh_register_callbacks(void)
 {
     ESP_ERROR_CHECK(esp_ble_mesh_register_prov_callback(prov_cb));
     ESP_ERROR_CHECK(esp_ble_mesh_register_config_server_callback(cfg_server_cb));
     ESP_ERROR_CHECK(esp_ble_mesh_register_generic_server_callback(generic_server_cb));
 }
-
+//start the ble mesh.
 static void ble_mesh_start(void)
 {
     ble_mesh_register_callbacks();
@@ -305,7 +308,7 @@ static void ble_mesh_start(void)
 }
 
 //ble task.
-
+//the main logic of the ble mesh is in this task, it initializes the ble mesh, starts it and then waits for motion state updates from the queue to send to other nodes.
 void ble_task(void *arg)
 {
     g_ble_args = (ble_args_t *)arg;
@@ -321,8 +324,7 @@ void ble_task(void *arg)
 
     while (true) {
         uint8_t motion = 0;
-
-        
+    
         if (xQueueReceive(g_ble_args->ble_tx_queue,&motion,0) == pdTRUE) {
             motion = motion ? 1 : 0;//is motion detected or not.
 
